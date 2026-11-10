@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>NCS Catalog Explorer</title>
+<style>
+/* Layout: a sticky header, then three scrolling columns (sections | picture or list | details). Colour: a warm paper
+   neutral, a teal accent for controls, eight topic hues (the validated categorical palette) that tint whatever belongs
+   to a topic, and a fixed green / amber / red for "in the cleaned data / not / removed" that is always paired with text. */
+:root {
+  color-scheme: light;
+  --bg: #fbfaf7; --panel: #ffffff; --pill: #f3f1ec; --chip: #efede7; --ink: #1d1d1b; --muted: #5f5e59;
+  --line: #e4e2dc; --line-ui: #8a8982; --edge: #c9c7c0; --accent: #0b7285; --accent-soft: #e3f1f4;
+  --ok: #256a42; --warn: #8a4f00; --bad: #b3261e;
+  --f-cleaned: #1f8a4c; --f-dropped: #b8801f; --f-pii: #c43d3a;
+  --c0: #9a988f; --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #6250d6; --c8: #e34948;
+  --tint: 12%; --tint-strong: 26%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #151514; --panel: #1e1e1c; --pill: #2a2927; --chip: #2d2c29; --ink: #ecebe6; --muted: #a9a8a1;
+    --line: #34332f; --line-ui: #7d7c76; --edge: #5a5954; --accent: #5ec2d9; --accent-soft: #1f3a40;
+    --ok: #6cc28f; --warn: #e0a35a; --bad: #f08a82;
+    --f-cleaned: #4fae76; --f-dropped: #e8b86a; --f-pii: #e07068;
+    --c0: #7a7973; --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
+    --tint: 22%; --tint-strong: 38%;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #151514; --panel: #1e1e1c; --pill: #2a2927; --chip: #2d2c29; --ink: #ecebe6; --muted: #a9a8a1;
+  --line: #34332f; --line-ui: #7d7c76; --edge: #5a5954; --accent: #5ec2d9; --accent-soft: #1f3a40;
+  --ok: #6cc28f; --warn: #e0a35a; --bad: #f08a82;
+  --f-cleaned: #4fae76; --f-dropped: #e8b86a; --f-pii: #e07068;
+  --c0: #7a7973; --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
+  --tint: 22%; --tint-strong: 38%;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 20; background: var(--panel); color: var(--accent); padding: 6px 10px; border: 1px solid var(--line-ui); border-radius: 6px; }
+.skip:focus { left: 16px; }
+header { position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px;
+  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+header h1 { font-size: 17px; margin: 0; font-weight: 700; }
+header .sub { color: var(--muted); font-size: 12.5px; max-width: 420px; }
+nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.btn, nav button, .pullsel button, .btns button, .crumbs button, .more { border: 1px solid var(--line-ui); background: transparent; color: var(--ink);
+  padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+.btn:hover, nav button:hover, .pullsel button:hover, .btns button:hover, .crumbs button:hover, .more:hover { border-color: var(--accent); color: var(--accent); }
+nav button[aria-current], .pullsel button[aria-current] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  text-decoration: underline; text-underline-offset: 4px; }
+button:disabled { opacity: .5; cursor: default; }
+.pullsel { display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.search { flex: 1 1 240px; min-width: 180px; max-width: 460px; display: flex; flex-direction: column; gap: 2px; }
+#q { width: 100%; padding: 6px 10px; border: 1px solid var(--line-ui); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit;
+  -webkit-appearance: none; appearance: none; }
+#q::placeholder { color: var(--muted); opacity: 1; }
+#qnote { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 290px minmax(0, 1fr) minmax(0, 1.15fr); }
+main > section { overflow: auto; border-right: 1px solid var(--line); padding: 10px 16px; min-width: 0; }
+main > section:last-child { border-right: 0; background: var(--panel); }
+main.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+main.single { grid-template-columns: minmax(0, 1fr); }
+main.graphmode { grid-template-columns: minmax(0, 1.75fr) minmax(320px, 1fr); }
+main.wide #left, main.graphmode #left, main.single #left, main.single #detail { display: none; }
+@media (max-width: 900px) {
+  header { position: static; }
+  header .sub { display: none; }
+  html, body { height: auto; }
+  main, main.wide, main.graphmode, main.single { grid-template-columns: 1fr; min-height: auto; }
+  main > section { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  #left { max-height: 40vh; overflow: auto; }
+}
+h2.kicker, h3.kicker { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+h2.kicker:first-child, h3.kicker:first-child { margin-top: 2px; }
+h2.item { font-size: 18px; margin: 2px 0 4px; overflow-wrap: anywhere; }
+.list { list-style: none; margin: 0; padding: 0; }
+.row { width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; padding: 6px 8px; border-radius: 6px;
+  cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.row:hover { background: var(--accent-soft); }
+.row[aria-current] { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.row .name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.row .lbl { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 140px; min-width: 0; }
+.row .n { color: var(--muted); font-size: 12.5px; margin-left: auto; white-space: nowrap; }
+.section-head { margin: 12px 0 4px 8px; font-size: 12.5px; color: var(--accent); font-weight: 600; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 10px; background: var(--chip); font-size: 12.5px; white-space: nowrap; }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+.desc { color: var(--muted); font-style: italic; }
+.label { white-space: pre-wrap; margin: 6px 0 10px; }
+dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 6px 0; }
+dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.row .name.plain { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13.5px; }   /* a readable section title, not a code */
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); padding: 8px; border-radius: 6px; font-size: 13px; max-height: 320px; overflow: auto; }
+.link { border: 0; background: none; padding: 4px 0; margin: -4px 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; text-align: left; }
+.muted { color: var(--muted); } .note { color: var(--muted); font-size: 13px; }
+.banner { background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; font-size: 13px; margin: 0 0 8px; }
+.welcome { margin: 2px 0 12px; } .welcome h2 { font-size: 21px; margin: 0 0 4px; font-weight: 700; } .welcome p { margin: 0; color: var(--muted); font-size: 14px; max-width: 760px; }
+.empty { color: var(--muted); padding: 24px 8px; }
+.more { margin: 8px; }
+select { font: inherit; padding: 4px 6px; border: 1px solid var(--line-ui); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 8px; align-items: center; }
+details summary { cursor: pointer; color: var(--accent); margin: 6px 0; padding: 4px 0; }
+.stat { display: inline-block; margin: 0 14px 8px 0; } .stat b { font-size: 19px; display: block; font-variant-numeric: tabular-nums; }
+/* the picture area (network and map share the controls) */
+#mid.graphwrap { display: flex; flex-direction: column; padding: 8px 16px; overflow: hidden; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.crumbs button { border-radius: 16px; padding: 4px 12px; font-size: 13.5px; background: var(--pill); }
+.crumbs button[aria-current] { border-color: var(--hue, var(--accent)); box-shadow: inset 0 0 0 1px var(--hue, var(--accent)); color: var(--ink); }
+.crumbs .sep { color: var(--muted); }
+.crumbs .up { margin-left: auto; }
+.ctl { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.ctl label { display: inline-flex; gap: 6px; align-items: center; }
+.legend { display: inline-flex; flex-wrap: wrap; gap: 10px; align-items: center; list-style: none; margin: 0; padding: 0; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.bar { display: flex; gap: 2px; height: 10px; border-radius: 3px; overflow: hidden; background: var(--panel); margin: 4px 0 2px; }
+.bar span { display: block; height: 100%; flex: 1 1 0; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.netscroll { flex: 1; overflow: auto; }
+.net { position: relative; padding: 4px 4px 24px; }
+.net svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.net svg path { fill: none; stroke: var(--edge); stroke-width: 1.2; }
+.root { display: flex; justify-content: center; margin: 4px 0 42px; }
+.pills { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px 22px; justify-items: center; list-style: none; margin: 0; padding: 0; }
+.pill { position: relative; width: 100%; max-width: 340px; border: 1px solid var(--line-ui); border-left: 5px solid var(--hue, var(--line-ui));
+  background: var(--pill); color: var(--ink); border-radius: 14px; padding: 9px 14px 14px; cursor: pointer; text-align: left; font: inherit; overflow: hidden; }
+.pill.hued { background: color-mix(in srgb, var(--hue) var(--tint), var(--pill)); }
+.pill:hover { border-color: var(--accent); }
+.pill.top { max-width: 560px; font-size: 16px; text-align: center; border-left-width: 1px; border-top: 5px solid var(--hue, var(--line-ui)); cursor: default; }
+.pill .nm { font-weight: 650; overflow-wrap: anywhere; }
+.pill .nm.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.pill .qt { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.pill .cl { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.mix { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; display: flex; gap: 2px; background: var(--panel); }
+.mix span { display: block; height: 100%; flex: 1 1 0; }
+.netnote { color: var(--muted); font-size: 13px; margin-top: 18px; }
+#map { position: relative; flex: 1; min-height: 360px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.tile { position: absolute; overflow: hidden; cursor: pointer; border: 1px solid var(--bg); border-radius: 3px; color: var(--ink); background: var(--pill); padding: 0; font: inherit; text-align: left; }
+.tile.hued { background: color-mix(in srgb, var(--hue) var(--tint-strong), var(--pill)); }
+.tile:hover { outline: 2px solid var(--accent); z-index: 1; }
+.tile .tl { position: absolute; left: 3px; top: 3px; max-width: calc(100% - 6px); padding: 2px 5px; font-size: 12.5px; line-height: 1.25; border-radius: 3px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent); pointer-events: none; }
+.tile .tl b { font-weight: 650; overflow-wrap: anywhere; }
+.tile .tl .q { display: block; color: var(--muted); }
+.tile .mix { height: 6px; }
+.tile .sub { position: absolute; border: 1px solid color-mix(in srgb, var(--panel) 55%, transparent); pointer-events: none; }
+.unlabelled { font-size: 13px; color: var(--muted); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+@media (forced-colors: active) {
+  .mix, .mix span, .bar span, .sw, .tile { forced-color-adjust: none; }
+  .tile { outline: 1px solid CanvasText; }
+  nav button[aria-current], .pullsel button[aria-current], .crumbs button[aria-current], .row[aria-current] { outline: 2px solid CanvasText; outline-offset: -2px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#mid">Skip to the content</a>
+<header>
+  <div><h1>NCS Catalog Explorer</h1>
+    <div class="sub">Click a topic to open it; the panel on the right lists what is inside and copies the variable names. Survey questions and variable names only.</div></div>
+  <div class="pullsel" id="pulls">data as of <span class="muted">loading…</span></div>
+  <nav id="tabs" aria-label="Views"></nav>
+  <div class="search">
+    <label for="q" class="sr-only">Search variable names, question text, survey sections, topics and answer options</label>
+    <input id="q" type="search" autocomplete="off" placeholder="Search names, questions, sections and answers" disabled>
+    <div id="qnote" aria-hidden="true"></div>
+  </div>
+  <div id="status" role="status" class="sr-only"></div>
+</header>
+<main id="main" class="single">
+  <section id="left" aria-label="Survey sections"></section>
+  <section id="mid" aria-label="Content" tabindex="-1"><p class="empty" id="loading">Loading the variable list (about 3 MB)…</p></section>
+  <section id="detail" aria-label="Details" tabindex="-1"></section>
+</main>
+<script>
+"use strict";
+// the data arrives in parts: data/ncs_graph.js says how many, data/ncs_graph_<n>.js hold them; load them, merge, start
+function loadScript(src) {
+  return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("could not load " + src)); document.head.append(s); });
+}
+async function loadGraph() {
+  await loadScript("data/ncs_graph.js");
+  const n = window.NCS_GRAPH_PARTS || 0;
+  await Promise.all(Array.from({ length: n }, (_, i) => loadScript(`data/ncs_graph_${i + 1}.js`)));
+  const chunks = window.NCS_GRAPH_CHUNKS || [];
+  if (!n || chunks.length !== n) throw new Error(`expected ${n} data parts, got ${chunks.length}`);
+  return chunks.reduce((g, c) => ({ meta: c.meta || g.meta, edges: g.edges.concat(c.edges || []), nodes: Object.assign(g.nodes, c.nodes || {}) }),
+    { meta: null, edges: [], nodes: {} });
+}
+function showLoadError(why) {
+  const mid = document.getElementById("mid");
+  const local = location.protocol === "file:";
+  const p = document.createElement("div"); p.className = "empty";
+  p.textContent = local ? "No data yet. Build it first: python3 explorer/build_ncs_graph.py (needs an AWS login), then reload this page."
+    : "The variable list did not load. Check your connection and reload the page.";
+  const b = document.createElement("button"); b.className = "btn"; b.textContent = "Reload"; b.addEventListener("click", () => location.reload());
+  const d = document.createElement("div"); d.className = "note"; d.textContent = why || "";
+  mid.replaceChildren(p, b, d);
+}
+loadGraph().then((G) => { try { startExplorer(G); } catch (e) { showLoadError(String(e && e.message || e)); } },
+                 (e) => showLoadError(String(e && e.message || e)));
+
+function startExplorer(G) {
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "onclick") e.addEventListener("click", v); else if (k === "class") e.className = v; else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false && k !== "") e.append(k instanceof Node ? k : String(k));
+  return e;   // every string goes in as text, never as HTML
+}
+if (!G || !G.meta) throw new Error("the data has no header");
+
+// ---- plain-language labels (the data keeps short codes; the page never shows them) ---------------------------------------
+const STATUS = { is_field: ["a survey question", "ok"], checkbox_option: ["one option of a check-all-that-apply question", "ok"],
+  form_status: ["when a section was done, or whether it was finished", "ok"], redcap_system: ["survey software record-keeping", "ok"],
+  unresolved: ["not found in the codebook", "bad"], pipeline: ["added during cleaning", ""] };
+const FATE = { cleaned: ["in the cleaned data", "ok"], not_in_cleaned: ["not in the cleaned data", "warn"], removed_pii: ["removed: identifying information", "bad"] };
+const FATE_WHY = { cleaned: "in the cleaned data that researchers receive", not_in_cleaned: "kept in the raw data but left out of the cleaned data (typed-in answers, hidden or calculated fields, and other text)",
+  removed_pii: "removed before anything else because it could identify a person (names, contact details)" };
+const FATE_COLOR = { cleaned: "var(--f-cleaned)", not_in_cleaned: "var(--f-dropped)", removed_pii: "var(--f-pii)" };
+const GROUPS = { topic: "topic", instrument: "survey section", fate: "in the cleaned data or not", harmonized: "shared across studies or not", status: "where it comes from" };
+const SHOW = { all: "all variables", cleaned: "only variables in the cleaned data", not_cleaned: "only variables not in the cleaned data", removed: "only removed variables" };
+const PSEUDO = { redcap_system: "Survey software record-keeping", unresolved: "Not found in the codebook", pipeline: "Scores and derived variables" };
+const NO_QUESTIONS = "Pages with no questions";
+const chip = (map, key, title) => key ? el("span", { class: "chip " + ((map[key] || [])[1] || ""), title: title || null }, (map[key] || [key])[0]) : "";
+const fateChip = (key) => chip(FATE, key, FATE_WHY[key]);
+const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many || one + "s"}`;
+const dl = (b) => `data as of ${b}`;
+const across = (c) => !c.across_pulls ? "" : c.across_pulls === "agree" ? "in the same survey section in both data sets"
+  : c.across_pulls === "instrument_changed" ? "in a different survey section in each data set" : "only in the " + dl(c.across_pulls.replace("only_", ""));
+// survey-software idioms inside question text and logic, shown in plain words
+const tidy = (s) => { const t = String(s || "").replace(/\s*\[[A-Za-z0-9_:\-().]+\]/g, "").replace(/\s*\{[A-Za-z0-9_:\-]+\}/g, "").replace(/\s+/g, " ").trim(); return t || String(s || ""); };
+const IDIOMS = [[/-888/g, "-888 (the 'Other' choice)"], [/@HIDDEN-SURVEY/g, "hidden from the participant"], [/@HIDDEN/g, "hidden"], [/@CALCTEXT/g, "calculated by the survey software"]];
+const humanize = (s) => IDIOMS.reduce((t, [re, w]) => t.replace(re, w), String(s || ""));
+const FORMAT = { integer: "whole number", number: "number", number_1dp: "number", number_2dp: "number", date_mdy: "date", date_ymd: "date", date_dmy: "date",
+  datetime_mdy: "date and time", datetime_ymd: "date and time", datetime_seconds_mdy: "date and time", datetime_seconds_ymd: "date and time",
+  email: "email address", phone: "phone number", zipcode: "ZIP code", time: "time", autocomplete: "" };
+
+// ---- indexes -------------------------------------------------------------------------------------------------------------
+const N = G.nodes, PULLS = G.meta.pulls.slice();
+const fields = {}, insts = {}, colsOf = {}, colsByField = {}, colsByInst = {}, mapped = {}, topicsOf = {}, instOrder = {}, hasQuestions = {}, addedBy = {};
+for (const b of PULLS) { fields[b] = {}; colsOf[b] = []; colsByField[b] = {}; colsByInst[b] = {}; instOrder[b] = {}; hasQuestions[b] = new Set(); addedBy[b] = 0; }
+for (const n of Object.values(N)) {
+  if (n.kind === "field") {
+    const shown = tidy(n.label);
+    if (shown !== n.label && !n.label_source) n.label_source = n.label;
+    n.label = shown;
+    if (n.choices) n.choices = n.choices.map(([code, label]) => [code, tidy(label)]);
+    fields[n.batch][n.name] = n;
+  } else if (n.kind === "column") {
+    for (const [b, r] of Object.entries(n.pulls)) {
+      if (!colsOf[b]) continue;
+      if (r.option) r.option = [r.option[0], tidy(r.option[1])];
+      colsOf[b].push(n);
+      if (r.field) (colsByField[b][r.field] = colsByField[b][r.field] || []).push(n);
+      if (r.instrument) (colsByInst[b][r.instrument] = colsByInst[b][r.instrument] || []).push(n);
+      if (r.status === "is_field" || r.status === "checkbox_option") hasQuestions[b].add(r.instrument);
+      if (r.status === "pipeline") addedBy[b]++;
+    }
+  }
+}
+for (const b of PULLS) {
+  insts[b] = Object.values(N).filter((n) => n.kind === "instrument" && n.pulls[b]).sort((x, y) => x.pulls[b].order - y.pulls[b].order);
+  for (const i of insts[b]) instOrder[b][i.name] = new Map(i.pulls[b].fields.map((f, k) => [f, k]));
+  colsOf[b].sort((x, y) => x.name.localeCompare(y.name));
+}
+// a survey section's readable title (explorer/ncs_section_titles.csv, seeded from REDCap's own form labels); the code name when there is none
+const titleOf = (inst) => { const n = inst && N["instrument:" + inst]; return n && n.title ? n.title : inst; };
+for (const [rel, from, to, , review, detail] of G.edges) {
+  if (rel === "mapped_to") (mapped[from.slice(7)] = mapped[from.slice(7)] || []).push([N[to].name, detail]);
+  if (rel === "tagged_topic") {
+    const t = N[to], sub = t.kind === "subtopic";
+    (topicsOf[from.slice(11)] = topicsOf[from.slice(11)] || []).push({ topic: sub ? t.topic : t.name, subtopic: sub ? t.name : "", review, why: detail });
+  }
+}
+// what the search looks through: name, question text, survey section, topic and sub-topic names, answer options
+for (const b of PULLS) {
+  for (const f of Object.values(fields[b]))
+    f._hay = [f.name, f.label, f.form, titleOf(f.form), ...(topicsOf[f.form] || []).map((t) => t.topic + " " + t.subtopic), ...(f.choices || []).map((c) => c[1])].join(" ").toLowerCase();
+  for (const c of colsOf[b]) {
+    const r = c.pulls[b], f = r.field && fields[b][r.field];
+    const topics = (topicsOf[r.instrument] || []).map((t) => t.topic + " " + t.subtopic);
+    // an option of a check-all question matches its own answer text, not its siblings'; other variables match all their options
+    const answers = r.option ? [r.option[1]] : (f && f.choices ? f.choices.map((x) => x[1]) : []);
+    c._hay = c._hay || {};
+    c._hay[b] = [c.name, f ? f.name + " " + f.label : "", r.instrument || "", titleOf(r.instrument) || "", ...topics, ...answers, PSEUDO[r.status] || ""].join(" ").toLowerCase();
+  }
+}
+const words = (q) => q.toLowerCase().split(/\s+/).filter(Boolean);
+const matches = (hay, ws) => ws.every((w) => hay.includes(w));
+
+// ---- state + routing -----------------------------------------------------------------------------------------------------
+const TABS = [["network", "Network"], ["map", "Map"], ["instruments", "Survey sections"], ["columns", "Variables"], ["review", "Data checks"], ["about", "About"]];
+const S = { pull: PULLS[PULLS.length - 1], tab: "network", inst: null, sel: null, q: "", status: "", fate: "", limit: 300, group: "topic", show: "all", path: [], all: false };
+let focusNext = null, written = "", stale = null;   // stale: a link that named a group this data set does not have
+function go(patch, opts) {
+  Object.assign(S, patch);
+  stale = null;
+  focusNext = (opts && opts.focus) || null;
+  writeHash(!!(opts && opts.replace));
+  render();
+}
+function hashFor(s) {
+  const extra = new URLSearchParams();
+  if (s.q) extra.set("q", s.q);
+  if (s.group !== "topic") extra.set("group", s.group);
+  if (s.show !== "all") extra.set("show", s.show);
+  if (s.all) extra.set("all", "1");
+  if (s.tab === "instruments" && s.inst) extra.set("section", s.inst);
+  if (s.status) extra.set("from", s.status);
+  if (s.fate) extra.set("fate", s.fate);
+  const base = [s.pull, s.tab, s.path.join("›") || "-", s.sel ? s.sel.type + ":" + s.sel.name : "-"].map(encodeURIComponent).join("/");
+  const x = extra.toString();
+  return "#" + base + (x ? "?" + x : "");
+}
+const DEFAULT_HASH = hashFor(S);          // the opening view: the newest download, all topics; the address stays bare there, so a shared root link never pins a download
+function writeHash(replace) {
+  const full = hashFor(S), h = full === DEFAULT_HASH ? "" : full;
+  if (h === location.hash) return;
+  written = h;
+  try { history[replace ? "replaceState" : "pushState"](null, "", h || location.pathname + location.search); } catch (e) { location.hash = h; }   // pages opened from disk may refuse history calls
+}
+function readHash() {
+  const raw = location.hash.slice(1), at = raw.indexOf("?");
+  const base = (at < 0 ? raw : raw.slice(0, at)).split("/").map(decodeURIComponent), extra = new URLSearchParams(at < 0 ? "" : raw.slice(at + 1));
+  const [pull, tab, path, sel] = base;
+  S.pull = PULLS.includes(pull) ? pull : PULLS[PULLS.length - 1];
+  S.tab = TABS.some(([k]) => k === tab) ? tab : "network";
+  S.path = path && path !== "-" ? path.split("›") : [];
+  S.sel = null;
+  if (sel && sel !== "-") { const i = sel.indexOf(":"); S.sel = { type: sel.slice(0, i), name: sel.slice(i + 1) }; }
+  S.q = extra.get("q") || "";
+  S.group = GROUPS[extra.get("group")] ? extra.get("group") : "topic";
+  S.show = SHOW[extra.get("show")] ? extra.get("show") : "all";
+  S.all = extra.get("all") === "1";
+  S.inst = extra.get("section") || S.inst;
+  S.status = STATUS[extra.get("from")] ? extra.get("from") : "";
+  S.fate = FATE[extra.get("fate")] ? extra.get("fate") : "";
+}
+
+// ---- the grouping both pictures share: (topic | section | ...) -> survey section -> question -> variable ------------------
+const treeCache = new Map();
+function getTree(q, show) {              // q and show default to the current search and "show" filter
+  if (q === undefined) q = S.q;
+  if (show === undefined) show = S.show;
+  const key = [S.pull, S.group, show, q.trim().toLowerCase()].join("|");
+  if (treeCache.has(key)) return treeCache.get(key);
+  if (treeCache.size > 16) treeCache.clear();
+  const t = buildTree(q, show);
+  treeCache.set(key, t);
+  return t;
+}
+function buildTree(q, show) {
+  const b = S.pull;
+  const root = { key: "", name: "NCS, " + dl(b), kind: "root", n: 0, f: {}, kids: new Map() };
+  const ws = words(q);
+  const add = (node, r) => { node.n++; node.f[r.fate] = (node.f[r.fate] || 0) + 1; };
+  const child = (node, kind, key, name, extra) => {
+    if (!node.kids.has(key)) node.kids.set(key, Object.assign({ key, name, kind, n: 0, f: {}, kids: new Map(), parent: node }, extra || {}));
+    return node.kids.get(key);
+  };
+  for (const c of colsOf[b]) {
+    const r = c.pulls[b];
+    if ((show === "cleaned" && r.fate !== "cleaned") || (show === "not_cleaned" && r.fate !== "not_in_cleaned") || (show === "removed" && r.fate !== "removed_pii")) continue;
+    if (ws.length && !matches(c._hay[b], ws)) continue;
+    add(root, r);
+    const counted = new Set();
+    const count = (node) => { if (node !== root && !counted.has(node)) { counted.add(node); add(node, r); } };
+    const inst = r.instrument || PSEUDO[r.status] || "Other";
+    const stub = r.instrument && !hasQuestions[b].has(r.instrument);           // a page that only records completion
+    let tops = [root];
+    if (S.group === "topic") {
+      const t = r.instrument ? (topicsOf[r.instrument] || []) : [];
+      tops = t.length ? t.map((x) => {                       // the topic, then its sub-topic when the tag has one
+        let tn = child(root, "group", "t:" + x.topic, x.topic, { draft: x.review !== "reviewed" }); count(tn);
+        if (x.subtopic) { tn = child(tn, "group", "st:" + x.subtopic, x.subtopic, { draft: x.review !== "reviewed" }); count(tn); }
+        return tn;
+      }) : [child(root, "group", "t:" + inst, titleOf(inst), { code: inst })];
+    } else if (S.group === "fate") tops = [child(root, "group", "f:" + r.fate, FATE[r.fate][0])];
+    else if (S.group === "status") tops = [child(root, "group", "s:" + r.status, STATUS[r.status][0])];
+    else if (S.group === "harmonized") tops = [mapped[c.name] ? child(root, "group", "h:yes", "shared across studies") : child(root, "group", "h:no", "not shared across studies")];
+    const f = r.field && fields[b][r.field];
+    const fieldOrder = r.field ? (instOrder[b][r.instrument] || new Map()).get(r.field) : undefined;
+    for (const top of new Set(tops)) {    // a section tagged with two topics sits under both
+      count(top);
+      let node;
+      if (stub) { node = child(top, "instrument", "i:" + NO_QUESTIONS, NO_QUESTIONS, { order: 1e7 }); add(node, r); node = child(node, "field", "q:" + inst, titleOf(inst), { order: 1e6, code: inst }); add(node, r); }
+      else { node = child(top, "instrument", "i:" + inst, titleOf(inst), { code: inst }); add(node, r); }
+      if (r.field) { node = child(node, "field", "q:" + r.field, r.field, { order: fieldOrder === undefined ? 1e6 : fieldOrder }); add(node, r); }
+      const order = r.option && f && f.choices ? Math.max(0, f.choices.findIndex(([code]) => code === r.option[0])) : r.status === "form_status" ? 1e6 + 1 : 1e6;
+      const leaf = child(node, "column", "c:" + c.name, c.name, { order }); add(leaf, r); leaf.col = c;
+    }
+  }
+  (function collapse(node) {             // a question with one variable of the same name is one item, not two
+    for (const k of node.kids.values()) {
+      if (k.kind === "field" && k.kids.size === 1) { const only = [...k.kids.values()][0]; if (only.name === k.name) { k.kind = "column"; k.col = only.col; k.kids = new Map(); } }
+      collapse(k);
+    }
+  })(root);
+  return root;
+}
+function orderKids(node) {               // survey order inside a section (bookkeeping last); biggest first elsewhere
+  const ks = [...node.kids.values()];
+  if (node.kind === "instrument" || node.kind === "field") return ks.sort((a, b) => (a.order === undefined ? 1e9 : a.order) - (b.order === undefined ? 1e9 : b.order) || a.name.localeCompare(b.name));
+  return ks.sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+}
+function nodeAt(root, path) { let node = root; for (const key of path) { if (!node.kids.has(key)) return null; node = node.kids.get(key); } return node; }
+function resolve(root) {                 // the node for S.path; walks through levels that hold a single group
+  let node = root, missing = false;
+  for (const key of S.path) { if (node.kids.has(key)) node = node.kids.get(key); else { missing = true; break; } }
+  while (!missing && node.kind !== "root" && node.kids.size === 1) {
+    const only = [...node.kids.values()][0];
+    if (only.col || only.kind === "field") break;
+    node = only;
+  }
+  return { node, missing };
+}
+const groupInData = () => nodeAt(getTree("", "all"), S.path);   // the group at S.path as it is in the data, before the search and the "show" filter
+function findKey(root, key) {             // the first group (largest first) with that key or name, for links written by earlier versions of the page
+  const queue = [root];
+  while (queue.length) { const n = queue.shift(); if (n !== root && (n.key === key || n.name === key || n.code === key)) return n; if (!n.col) queue.push(...orderKids(n)); }
+  return null;
+}
+function settlePath() {                   // a link, or a change of data set, may name a group that does not exist here: recover instead of showing an empty page
+  if (!S.path.length || nodeAt(getTree(""), S.path) || groupInData()) return;   // exists; if only the search or "show" filter empties it, the views say so
+  const want = S.path[S.path.length - 1], found = findKey(getTree("", "all"), want);
+  stale = { want: want.replace(/^(t|st|i|q|c|f|s|h):/, ""), found: found ? (found.code && found.code !== found.name ? `${found.name} (${found.code})` : found.name) : null };
+  S.path = found ? pathOf(found) : [];
+  S.all = false;
+  writeHash(true);
+}
+function up(node) { let p = node.parent; while (p && p.kind !== "root" && p.kids.size === 1) p = p.parent; return p; }
+function pathOf(node) { const p = []; for (let n = node; n && n.kind !== "root"; n = n.parent) p.unshift(n.key); return p; }
+function leaves(node) { const out = new Set(); (function walk(n) { if (n.col) out.add(n.col); else for (const k of n.kids.values()) walk(k); })(node); return [...out]; }
+function mixBar(f, n, cls) {
+  const bar = el("span", { class: cls || "mix", "aria-hidden": "true" });
+  for (const k of Object.keys(FATE)) if (f[k]) bar.append(el("span", { style: `flex-grow:${f[k]};background:${FATE_COLOR[k]}` }));
+  return bar;
+}
+const fateLine = (f, n) => {
+  const c = f.cleaned || 0, p = f.removed_pii || 0;
+  return (c === n ? (n === 1 ? "in the cleaned data" : "all in the cleaned data") : `${c.toLocaleString()} of ${n.toLocaleString()} in the cleaned data`) + (p ? ` · ${p.toLocaleString()} removed` : "");
+};
+function questionText(node) {
+  const name = node.kind === "field" ? node.name : node.col && node.col.pulls[S.pull].field;
+  const f = name && fields[S.pull][name];
+  if (node.col && node.col.pulls[S.pull].option) return node.col.pulls[S.pull].option[1];
+  return f && f.type !== "descriptive" ? f.label : "";
+}
+function openLeaf(node) {
+  const r = node.col.pulls[S.pull];
+  go({ sel: r.field && r.field === node.name ? { type: "field", name: r.field } : { type: "column", name: node.col.name } }, { focus: "#detail" });
+}
+// topic hues: the eight largest topics take the eight validated hues, in size order; the rest stay neutral
+const slotCache = {};
+function slots() {
+  if (slotCache[S.pull]) return slotCache[S.pull];
+  const saved = { group: S.group, show: S.show }; Object.assign(S, { group: "topic", show: "all" });
+  const root = getTree("");
+  Object.assign(S, saved);
+  const m = {};
+  orderKids(root).filter((k) => k.key.startsWith("t:")).slice(0, 8).forEach((k, i) => { m[k.name] = i + 1; });
+  return (slotCache[S.pull] = m);
+}
+function hueOf(node) {
+  let topic = null;
+  for (let n = node; n && n.kind !== "root"; n = n.parent) {
+    if (S.group === "topic" && n.parent && n.parent.kind === "root") topic = n.name;
+    if (n.kind === "instrument" && topicsOf[n.name] && !topic) topic = topicsOf[n.name][0].topic;
+  }
+  return topic ? `var(--c${slots()[topic] || 0})` : "";
+}
+const tooltip = (k) => `${k.name}${k.code && k.code !== k.name ? " · " + k.code : ""}${questionText(k) ? " — " + questionText(k).slice(0, 160) : ""}\n${plural(k.n, "variable")}: ` +
+  Object.keys(FATE).filter((f) => k.f[f]).map((f) => `${k.f[f].toLocaleString()} ${FATE[f][0]}`).join(", ") + (k.col ? "" : "\nclick to open");
+function copyText(text, btn) {                        // the button says "copied" for a moment
+  const ok = () => { const was = btn.textContent; btn.textContent = "copied"; setTimeout(() => { btn.textContent = was; }, 1500); };
+  const fallback = () => { const ta = el("textarea"); ta.value = text; document.body.append(ta); ta.select(); try { document.execCommand("copy"); ok(); } catch (e) {} ta.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(fallback); else fallback();
+}
+function copyButtons(cols, fileLabel) {
+  const HEAD = ["variable", "survey section", "section title", "question", "question text", "comes from", "in the cleaned data?", "shared across studies as"];
+  const rows = () => cols.map((c) => {
+    const r = c.pulls[S.pull], fq = r.field && fields[S.pull][r.field];
+    return [c.name, r.instrument || "", r.instrument ? titleOf(r.instrument) : "", r.field || "", fq ? fq.label : "", STATUS[r.status][0], FATE[r.fate][0], (mapped[c.name] || []).map((m) => m[0]).join("; ")];
+  });
+  const names = el("button", { "aria-live": "polite" }, `copy the names of ${cols.length === 1 ? "this variable" : "these " + plural(cols.length, "variable")}`);
+  names.addEventListener("click", () => copyText(cols.map((c) => c.name).join("\n"), names));
+  const table = el("button", { "aria-live": "polite" }, "copy as a table with question text (for Excel or Sheets)");
+  table.addEventListener("click", () => copyText([HEAD].concat(rows()).map((r) => r.map((v) => String(v).replace(/[\t\n]+/g, " ")).join("\t")).join("\n"), table));
+  const link = el("button", { "aria-live": "polite" }, "copy a link to this view");
+  link.addEventListener("click", () => copyText(location.href, link));
+  const btns = el("div", { class: "btns" }, names, table, link);
+  if (window.self === window.top && window.URL && URL.createObjectURL) {         // saving a file works on a web page or from disk, not inside an embedding viewer
+    const esc = (v) => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+    btns.append(el("button", { onclick: () => {
+      const a = el("a", { href: URL.createObjectURL(new Blob([[HEAD].concat(rows()).map((r) => r.map(esc).join(",")).join("\n") + "\n"], { type: "text/csv" })),
+        download: `ncs_${S.pull}_${fileLabel.replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 60)}.csv` });
+      document.body.append(a); a.click(); a.remove();
+    } }, "download as a spreadsheet (CSV)"));
+  }
+  return btns;
+}
+
+// ---- header + the controls above both pictures ---------------------------------------------------------------------------
+function renderHeader() {
+  $("pulls").replaceChildren("data as of", ...PULLS.map((b) => el("button", { "aria-current": b === S.pull ? "true" : null,
+    onclick: () => go({ pull: b, limit: 300 }, { focus: "#pulls button[aria-current]" }) }, b)));
+  $("tabs").replaceChildren(...TABS.map(([k, t]) => el("button", { "aria-current": k === S.tab ? "page" : null,
+    onclick: () => go({ tab: k, limit: 300 }, { focus: "#tabs button[aria-current]" }) }, t)));
+}
+const unitName = () => S.group === "topic" ? "topic" : S.group === "instrument" ? "survey section" : "group";
+const unitsName = () => S.group === "topic" ? "topics" : S.group === "instrument" ? "survey sections" : "groups";
+function controls(root, node, missingName) {
+  const crumbs = el("div", { class: "crumbs" });
+  const trail = []; for (let n = node; n; n = n.parent) trail.unshift(n);
+  trail.forEach((n, i) => {
+    if (i) crumbs.append(el("span", { class: "sep", "aria-hidden": "true" }, "›"));
+    const label = i === 0 ? `All ${unitsName()}` : n.name;
+    const last = i === trail.length - 1 && !missingName;
+    crumbs.append(el("button", { "aria-current": last ? "location" : null, style: n.kind !== "root" && hueOf(n) ? `--hue:${hueOf(n)}` : null,
+      onclick: () => go({ path: pathOf(n), sel: null, all: false }, { focus: ".pill.top, #map" }) }, label));
+  });
+  if (missingName) { crumbs.append(el("span", { class: "sep", "aria-hidden": "true" }, "›"), el("button", { "aria-current": "location", disabled: true }, missingName)); }
+  if (node.parent) crumbs.append(el("button", { class: "up", title: "Esc also goes up", onclick: () => go({ path: pathOf(up(node)), sel: null, all: false }, { focus: ".pill.top, #map" }) }, "↑ up one level"));
+  const gsel = el("select", { id: "groupby" }, ...Object.entries(GROUPS).map(([k, t]) => el("option", { value: k, selected: k === S.group ? "" : null }, t)));
+  gsel.addEventListener("change", () => go({ group: gsel.value, path: [], sel: null, all: false }, { replace: true }));
+  const ssel = el("select", { id: "showsel" }, ...Object.entries(SHOW).map(([k, t]) => el("option", { value: k, selected: k === S.show ? "" : null }, t)));
+  ssel.addEventListener("change", () => go({ show: ssel.value, sel: null, all: false }, { replace: true }));
+  const legend = el("ul", { class: "legend" }, ...Object.entries(FATE).map(([k, [t]]) => el("li", { title: FATE_WHY[k] }, el("span", { class: "sw", style: `background:${FATE_COLOR[k]}` }), t)));
+  const out = [el("div", { class: "note" }, `${dl(S.pull)} · ${plural(root.n, "variable")}${S.q ? ` match “${S.q}”` : ""} · grouped by ${GROUPS[S.group]}`), crumbs,
+    el("div", { class: "ctl" }, el("label", {}, "group by ", gsel), el("label", {}, "show ", ssel), legend)];
+  if (!node.parent && !S.q && !missingName) out.unshift(el("div", { class: "welcome" }, el("h2", {}, "Welcome to the NCS Catalog Explorer"),
+    el("p", {}, `${plural(root.n, "variable")} from the National Cannabis Study, ${dl(S.pull)}, in ${plural(root.kids.size, unitName())}. Open one to see what is inside, or search for a word such as “sleep” or “medication”.`)));
+  if (stale) out.push(el("div", { class: "banner", role: "status" }, stale.found
+    ? `This link was written by an earlier version of the page; it now opens ${stale.found}.`
+    : `This link pointed to “${stale.want}”, which is not in this data set. Showing all ${unitsName()} instead.`));
+  if (S.group === "topic" && !node.parent) out.push(el("div", { class: "banner" }, "Topics are a first draft, written from the section names and questions; the study team still needs to review them. A section can belong to more than one topic."));
+  return out;
+}
+function noMatch() {
+  return el("div", { class: "empty" }, `No variables match “${S.q}”. The search looks for every word in the variable name, the question text, the section and topic names and the answer options. Try one word, for example “pain” or “medication”.`);
+}
+const SHOW_IS = { cleaned: "are in the cleaned data", not_cleaned: "are outside the cleaned data", removed: "were removed as identifying information" };
+function missingMessage(root) {           // the group exists in the data, but the search or the "show" filter leaves nothing inside it
+  const inShow = nodeAt(getTree(""), S.path);
+  if (inShow) return el("div", { class: "empty" }, `0 of ${plural(inShow.n, "variable")} inside ${inShow.name} match “${S.q}”. `,
+    root.n ? el("button", { class: "link", onclick: () => go({ path: [], all: false }, { focus: ".pill.top, #map" }) }, `Show all ${plural(root.n, "match", "matches")}`) : "");
+  const g = groupInData();
+  return el("div", { class: "empty" }, `None of the ${g ? plural(g.n, "variable") : "variables"} inside ${g ? g.name : "this group"} ${SHOW_IS[S.show] || "are shown"}. `,
+    el("button", { class: "link", onclick: () => go({ show: "all", all: false }, { replace: true, focus: ".pill.top, #map" }) }, "Show all variables"));
+}
+
+// ---- network: the current group on top, its members below, lines showing membership -------------------------------------
+function renderNetwork() {
+  const root = getTree(), { node, missing } = resolve(root);
+  const full = S.q ? getTree("") : root, fullNode = nodeAt(full, S.path), lost = missing ? groupInData() : null;
+  $("mid").className = "graphwrap";
+  const kids = missing ? [] : orderKids(node);
+  const LIMIT = 150, shown = S.all ? kids : kids.slice(0, LIMIT);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("aria-hidden", "true");
+  const hue = hueOf(node);
+  const top = el("div", { class: "pill top" + (hue ? " hued" : ""), style: hue ? `--hue:${hue}` : null, tabindex: "-1" },
+    el("span", { class: "nm" }, `${node.name} · ${plural(node.n, "variable")}`),
+    questionText(node) ? el("span", { class: "qt" }, questionText(node)) : "", el("span", { class: "cl" }, fateLine(node.f, node.n)), mixBar(node.f, node.n));
+  const pills = el("ul", { class: "pills" });
+  for (const k of shown) {
+    const titled = k.code && k.code !== k.name, code = k.kind === "field" || k.kind === "column" || (k.kind === "instrument" && !titled);
+    const qt = questionText(k), h = hueOf(k), fullK = S.q && fullNode ? nodeAt(full, pathOf(k)) : null;
+    const count = fullK && fullK.n !== k.n ? `${k.n.toLocaleString()} of ${fullK.n.toLocaleString()}` : k.n.toLocaleString();
+    pills.append(el("li", {}, el("button", { class: "pill" + (h ? " hued" : ""), style: h ? `--hue:${h}` : null, title: tooltip(k), "aria-describedby": null,
+      onclick: () => k.col ? openLeaf(k) : go({ path: pathOf(k), sel: null, all: false }, { focus: ".pill.top" }) },
+      el("span", { class: "nm" + (code ? " code" : "") }, k.col ? k.name : `${k.name} · ${count}`),
+      qt ? el("span", { class: "qt" }, qt.length > 110 ? qt.slice(0, 108) + "…" : qt) : titled ? el("span", { class: "qt mono" }, k.code) : "",
+      k.col ? "" : el("span", { class: "cl" }, fateLine(k.f, k.n)), mixBar(k.f, k.n))));
+  }
+  const net = el("div", { class: "net" }, svg, el("div", { class: "root" }, top), pills);
+  if (kids.length > shown.length) net.append(el("div", { class: "btns" }, el("button", { onclick: () => go({ all: true }, { replace: true, focus: ".pills li:nth-child(151) .pill" }) }, `show all ${kids.length.toLocaleString()}`)));
+  if (missing) net.append(missingMessage(root));
+  else if (!kids.length) net.append(S.q ? noMatch() : el("div", { class: "empty" }, "Nothing below this level."));
+  net.append(el("div", { class: "netnote" }, "Lines show what belongs to what, not statistical relationships. Counts are variables; each option of a check-all-that-apply question is its own variable. Being in the data does not mean participants answered. Esc goes up one level."));
+  $("mid").replaceChildren(...controls(root, node, lost ? lost.name : null), el("div", { class: "netscroll" }, net));
+  const draw = () => {                    // lines from the top item to each member, drawn once the layout is known
+    const box = net.getBoundingClientRect(), a = top.getBoundingClientRect();
+    if (!box.width) return;
+    const x0 = a.left + a.width / 2 - box.left, y0 = a.bottom - box.top;
+    svg.replaceChildren(...[...pills.children].map((p) => {
+      const b = p.getBoundingClientRect(), x1 = b.left + b.width / 2 - box.left, y1 = b.top - box.top, my = (y0 + y1) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M${x0},${y0} C${x0},${my} ${x1},${my} ${x1},${y1}`);
+      if (pills.children.length > 40) path.setAttribute("opacity", "0.45");
+      return path;
+    }));
+  };
+  requestAnimationFrame(draw);
+  return { root, node, missing };
+}
+
+// ---- map: the same grouping as nested rectangles, sized by number of variables -------------------------------------------
+function squarify(items, x, y, w, h) {
+  const out = [], total = items.reduce((s, i) => s + i.v, 0);
+  if (!total || w <= 0 || h <= 0) return out;
+  const scale = (w * h) / total;
+  const worst = (row, side) => {
+    const s = row.reduce((a, i) => a + i.v * scale, 0); let mx = 0, mn = Infinity;
+    for (const i of row) { mx = Math.max(mx, i.v * scale); mn = Math.min(mn, i.v * scale); }
+    return Math.max(side * side * mx / (s * s), (s * s) / (side * side * mn));
+  };
+  const place = (row) => {
+    const area = row.reduce((a, i) => a + i.v * scale, 0);
+    if (w >= h) { const cw = area / h; let cy = y; for (const i of row) { const ih = i.v * scale / cw; out.push({ ...i, x, y: cy, w: cw, h: ih }); cy += ih; } x += cw; w -= cw; }
+    else { const rh = area / w; let cx = x; for (const i of row) { const iw = i.v * scale / rh; out.push({ ...i, x: cx, y, w: iw, h: rh }); cx += iw; } y += rh; h -= rh; }
+  };
+  let row = [];
+  for (const it of items) {
+    const side = Math.min(w, h);
+    if (!row.length || worst(row.concat([it]), side) <= worst(row, side)) row.push(it);
+    else { place(row); row = [it]; }
+  }
+  if (row.length) place(row);
+  return out;
+}
+function renderMap() {
+  const root = getTree(), { node, missing } = resolve(root);
+  const lost = missing ? groupInData() : null;
+  const map = el("div", { id: "map", tabindex: "-1", role: "group", "aria-label": `Map of ${node.name}` });
+  $("mid").className = "graphwrap";
+  const unl = el("div", { class: "unlabelled" });
+  $("mid").replaceChildren(...controls(root, node, lost ? lost.name : null), map, unl);
+  const W = map.clientWidth || 1000, H = map.clientHeight || 640;
+  const kids = missing ? [] : orderKids(node);
+  if (missing) { map.append(missingMessage(root)); return { root, node, missing }; }
+  if (!kids.length) { map.append(S.q ? noMatch() : el("div", { class: "empty" }, "Nothing below this level.")); return { root, node, missing }; }
+  const small = [];
+  for (const t of squarify(kids.map((k) => ({ node: k, v: k.n })), 0, 0, W, H)) {
+    const k = t.node, txt = questionText(k), big = t.w > 64 && t.h > 24, h = hueOf(k);
+    const tile = el("button", { class: "tile" + (h ? " hued" : ""), title: tooltip(k), "aria-label": tooltip(k).replace(/\n/g, "; "),
+      style: `left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${h ? "--hue:" + h : ""}`,
+      onclick: () => k.col ? openLeaf(k) : go({ path: pathOf(k), sel: null }, { focus: "#map" }) });
+    if (big) tile.append(el("span", { class: "tl" }, el("b", {}, k.name), t.w > 100 ? " " + k.n.toLocaleString() : "",
+      txt && t.h > 48 && t.w > 130 ? el("span", { class: "q" }, txt.length > 90 ? txt.slice(0, 88) + "…" : txt) : ""));
+    else small.push(k);
+    if (!k.col && k.kids.size > 1 && k.kids.size <= 400 && t.w * t.h > 9000) {     // a glimpse of what is inside
+      const top = big ? 24 : 2;
+      for (const s of squarify(orderKids(k).map((g) => ({ v: g.n })), 2, top, t.w - 6, t.h - top - 10))
+        if (s.w > 3 && s.h > 3) tile.append(el("span", { class: "sub", style: `left:${s.x}px;top:${s.y}px;width:${s.w}px;height:${s.h}px` }));
+    }
+    tile.append(mixBar(k.f, k.n));
+    map.append(tile);
+  }
+  if (small.length) unl.append("Too small to label: ", ...small.map((k) => el("button", { class: "link", onclick: () => k.col ? openLeaf(k) : go({ path: pathOf(k), sel: null }, { focus: "#map" }) }, `${k.name} · ${k.n.toLocaleString()}`)));
+  return { root, node, missing };
+}
+
+// ---- the panel beside both pictures: what is in the current group, and taking it away ------------------------------------
+function groupPanel(root, node, missing) {
+  if (missing) { const g = groupInData(); return [el("div", { class: "muted" }, "this group"), el("h2", { class: "item" }, g ? g.name : node.name), missingMessage(root)]; }
+  const cols = leaves(node);
+  const out = [el("div", { class: "muted" }, node.parent ? "this group" : S.q ? `matching “${S.q}”` : "all variables"), el("h2", { class: "item" }, node.name)];
+  if (node.code && node.code !== node.name) out.push(el("div", { class: "note mono" }, node.code));
+  if (node.draft) out.push(el("div", { class: "note" }, "This topic is a first draft and has not been reviewed by the study team."));
+  if (node.kind === "instrument" && topicsOf[node.code || node.name]) out.push(el("div", { class: "note" }, "topic: " + topicsOf[node.code || node.name].map((t) => `${t.topic}${t.subtopic ? " › " + t.subtopic : ""} — ${t.why}`).join("; ")));
+  const nSec = new Set(cols.map((c) => c.pulls[S.pull].instrument || "")).size;
+  const nQ = new Set(cols.map((c) => c.pulls[S.pull].field).filter(Boolean)).size;
+  out.push(el("div", {}, el("span", { class: "stat" }, el("b", {}, cols.length.toLocaleString()), "variables"),
+    el("span", { class: "stat" }, el("b", {}, nQ.toLocaleString()), "questions"), el("span", { class: "stat" }, el("b", {}, nSec.toLocaleString()), "survey sections")));
+  if (cols.length) {
+    const f = {}; cols.forEach((c) => { const x = c.pulls[S.pull].fate; f[x] = (f[x] || 0) + 1; });
+    out.push(mixBar(f, cols.length, "bar"), el("div", { class: "note" }, Object.keys(FATE).filter((k) => f[k]).map((k) => `${f[k].toLocaleString()} ${FATE[k][0]}`).join(" · ")));
+    out.push(copyButtons(cols, node.name));
+  }
+  if (node.kids.size && !missing) {
+    const ks = orderKids(node);
+    out.push(el("h3", { class: "kicker" }, `What's inside: ${plural(ks.length, "item")}`));
+    const ul = el("ul", { class: "list" });
+    ks.slice(0, 60).forEach((k) => ul.append(el("li", {}, el("button", { class: "row", onclick: () => k.col ? openLeaf(k) : go({ path: pathOf(k), sel: null, all: false }, { focus: ".pill.top, #map" }) },
+      el("span", { class: "name" + (k.code && k.code !== k.name ? " plain" : "") }, k.name), el("span", { class: "lbl" + (k.code && k.code !== k.name ? " mono" : "") }, questionText(k) || (k.code && k.code !== k.name ? k.code : "")), el("span", { class: "n" }, k.n.toLocaleString())))));
+    out.push(ul);
+    if (ks.length > 60) out.push(el("div", { class: "note" }, `… and ${(ks.length - 60).toLocaleString()} more, on the ${S.tab === "map" ? "map" : "network"}`));
+  }
+  if (cols.length) {
+    out.push(el("h3", { class: "kicker" }, `variables${cols.length > 200 ? " (first 200)" : ""}`));
+    const ul = el("ul", { class: "list" }); cols.slice(0, 200).forEach((c) => ul.append(el("li", {}, varRow(c, true)))); out.push(ul);
+    if (cols.length > 200) out.push(el("div", { class: "note" }, `… and ${(cols.length - 200).toLocaleString()} more. Open a group to narrow down, or use the copy buttons above for the full list.`));
+  }
+  return out;
+}
+
+// ---- lists ---------------------------------------------------------------------------------------------------------------
+function renderLeft() {
+  const ws = words(S.q), list = insts[S.pull].filter((i) => !ws.length || i.pulls[S.pull].fields.some((f) => fields[S.pull][f] && matches(fields[S.pull][f]._hay, ws)));
+  const withVars = insts[S.pull].filter((i) => (colsByInst[S.pull][i.name] || []).length).length;
+  const box = [el("h2", { class: "kicker" }, ws.length ? `${list.length} of ${plural(insts[S.pull].length, "survey section")} match` : `${plural(insts[S.pull].length, "survey section")}`),
+    ws.length ? "" : el("div", { class: "note" }, `${withVars} have variables in this data set; the rest are pages that record completion only.`)];
+  const ul = el("ul", { class: "list" });
+  for (const i of list) {
+    const nq = i.pulls[S.pull].fields.filter((f) => fields[S.pull][f] && fields[S.pull][f].type !== "descriptive").length;
+    const nv = (colsByInst[S.pull][i.name] || []).length;
+    ul.append(el("li", {}, el("button", { class: "row", "aria-current": S.inst === i.name ? "true" : null, onclick: () => go({ tab: "instruments", inst: i.name }, { focus: "#mid" }) },
+      el("span", { class: "name" + (titleOf(i.name) !== i.name ? " plain" : "") }, titleOf(i.name)), el("span", { class: "lbl mono" }, titleOf(i.name) !== i.name ? i.name : ""), el("span", { class: "n" }, `${nq} q · ${nv} var`))));
+  }
+  box.push(ul);
+  $("left").replaceChildren(...box);
+}
+function questionRow(f) {
+  const nv = (colsByField[S.pull][f.name] || []).length;
+  return el("button", { class: "row", title: f.label || null, "aria-current": S.sel && S.sel.type === "field" && S.sel.name === f.name ? "true" : null,
+    onclick: () => go({ sel: { type: "field", name: f.name } }, { focus: "#detail" }) },
+    el("span", { class: "name" }, f.name), el("span", { class: "lbl" + (f.type === "descriptive" ? " desc" : "") }, f.label || ""),
+    el("span", { class: "n" }, f.type === "descriptive" ? "text only" : nv > 1 ? `${nv} variables` : ""));
+}
+function varRow(c, withQuestion) {
+  const r = c.pulls[S.pull] || {}, f = r.field && fields[S.pull][r.field];
+  const text = withQuestion && f ? (r.option ? r.option[1] : f.label) : (r.instrument ? titleOf(r.instrument) : "") || (r.status === "unresolved" ? STATUS.unresolved[0] : PSEUDO[r.status] || "");
+  return el("button", { class: "row", title: f && f.label ? f.label : null, "aria-current": S.sel && S.sel.type === "column" && S.sel.name === c.name ? "true" : null,
+    onclick: () => go({ sel: { type: "column", name: c.name } }, { focus: "#detail" }) },
+    el("span", { class: "name" }, c.name), el("span", { class: "lbl" }, text), el("span", { class: "n" }, fateChip(r.fate)));
+}
+function renderInstrument() {
+  if (!S.inst || !N["instrument:" + S.inst] || !N["instrument:" + S.inst].pulls[S.pull])
+    return [el("div", { class: "empty" }, "Pick a survey section on the left, or search above.")];
+  const inst = N["instrument:" + S.inst], ws = words(S.q), titled = titleOf(S.inst) !== S.inst;
+  const out = [el("div", { class: "muted" }, "survey section · " + dl(S.pull)), el("h2", { class: "item" + (titled ? "" : " mono") }, titleOf(S.inst))];
+  if (titled) out.push(el("div", { class: "note mono" }, S.inst));
+  if (topicsOf[S.inst]) out.push(el("div", { class: "note" }, "topic: " + topicsOf[S.inst].map((t) => t.topic + (t.subtopic ? " › " + t.subtopic : "")).join(", ") + " (draft)"));
+  let section = null, shown = 0;
+  const ul = el("ul", { class: "list" });
+  for (const name of inst.pulls[S.pull].fields) {
+    const f = fields[S.pull][name];
+    if (ws.length && !matches(f._hay, ws)) continue;
+    if (f.section && f.section !== section) { section = f.section; ul.append(el("li", { class: "section-head" }, section)); }
+    ul.append(el("li", {}, questionRow(f))); shown++;
+  }
+  if (ws.length) out.push(el("div", { class: "note" }, `${plural(shown, "question")} in this section match “${S.q}”`));
+  out.push(ul);
+  const other = (colsByInst[S.pull][S.inst] || []).filter((c) => c.pulls[S.pull].status === "form_status");
+  if (other.length && !ws.length) { out.push(el("h2", { class: "kicker" }, "when the section was completed, and whether it was finished")); const u = el("ul", { class: "list" }); other.forEach((c) => u.append(el("li", {}, varRow(c)))); out.push(u); }
+  return out;
+}
+function renderColumns() {
+  const ws = words(S.q);
+  const all = colsOf[S.pull].filter((c) => (!S.status || c.pulls[S.pull].status === S.status) && (!S.fate || c.pulls[S.pull].fate === S.fate) && (!ws.length || matches(c._hay[S.pull], ws)));
+  const opt = (map, cur) => [el("option", { value: "" }, "any"), ...Object.entries(map).map(([k, [t]]) => el("option", { value: k, selected: k === cur ? "" : null }, t))];
+  const st = el("select", { id: "fromsel" }, ...opt(STATUS, S.status)); st.addEventListener("change", () => go({ status: st.value, limit: 300 }, { replace: true }));
+  const fa = el("select", { id: "fatesel" }, ...opt(FATE, S.fate)); fa.addEventListener("change", () => go({ fate: fa.value, limit: 300 }, { replace: true }));
+  const out = [el("div", { class: "filters" }, el("label", {}, "comes from ", st), el("label", {}, "in the cleaned data? ", fa),
+    el("span", { class: "muted" }, `${all.length.toLocaleString()} of ${plural(colsOf[S.pull].length, "variable")}${ws.length ? ` match “${S.q}”` : ""}`))];
+  if (all.length) out.push(copyButtons(all, "variables"));
+  const ul = el("ul", { class: "list" }); all.slice(0, S.limit).forEach((c) => ul.append(el("li", {}, varRow(c, true)))); out.push(ul);
+  if (!all.length) out.push(ws.length ? noMatch() : el("div", { class: "empty" }, "No variables with these filters."));
+  if (all.length > S.limit) out.push(el("button", { class: "more", onclick: () => go({ limit: S.limit + 500 }, { replace: true, focus: `.list li:nth-child(${S.limit + 1}) .row` }) }, `show ${Math.min(500, all.length - S.limit)} more`));
+  return out;
+}
+function renderReview() {
+  const out = [el("h2", { class: "kicker" }, "Each data set")];
+  const kinds = Object.keys(STATUS).filter((k) => k !== "pipeline");
+  const t = el("table", {}, el("tr", {}, el("th", {}, "data as of"), el("th", {}, "downloaded"), el("th", { class: "num" }, "variables in the raw data"),
+    ...kinds.map((k) => el("th", { class: "num" }, STATUS[k][0])), el("th", { class: "num" }, "added during cleaning"), el("th", { class: "num" }, "variables in total"), el("th", { class: "num" }, "codebook entries")));
+  for (const b of PULLS) {
+    const v = N["version:" + b];
+    t.append(el("tr", {}, el("td", {}, b), el("td", {}, v.pulled_at || "—"), el("td", { class: "num" }, v.n_export_columns.toLocaleString()),
+      ...kinds.map((k) => el("td", { class: "num" }, (v.status_counts[k] || 0).toLocaleString())), el("td", { class: "num" }, addedBy[b].toLocaleString()),
+      el("td", { class: "num" }, (v.n_export_columns + addedBy[b]).toLocaleString()), el("td", { class: "num" }, v.n_fields.toLocaleString())));
+  }
+  out.push(t, el("div", { class: "note" }, "Elsewhere on this page, counts of variables include the ones added during cleaning (scores, matched conditions and medications, ids)."));
+  const rowBtn = (c, b, text) => el("li", {}, el("button", { class: "row", onclick: () => go({ pull: b || S.pull, sel: { type: "column", name: c.name } }, { focus: "#detail" }) },
+    el("span", { class: "name" }, c.name), el("span", { class: "lbl" }, text)));
+  for (const b of PULLS) {
+    const un = colsOf[b].filter((c) => c.pulls[b].status === "unresolved");
+    out.push(el("h2", { class: "kicker" }, `Not found in the codebook, ${dl(b)}: ${un.length}`));
+    if (!un.length) out.push(el("div", { class: "note" }, "Every variable in this data set is described by the codebook that came with it."));
+    else out.push(el("ul", { class: "list" }, ...un.map((c) => rowBtn(c, b, "no entry of this name in the codebook that came with this data set"))));
+  }
+  const cols = Object.values(N).filter((n) => n.kind === "column");
+  const changed = cols.filter((c) => c.across_pulls === "instrument_changed");
+  out.push(el("h2", { class: "kicker" }, `In a different survey section in each data set: ${changed.length}`),
+    el("ul", { class: "list" }, ...changed.map((c) => rowBtn(c, null, PULLS.map((b) => `${b}: ${(c.pulls[b] || {}).instrument || "not found in the codebook"}`).join("  ·  ")))));
+  for (const b of PULLS) {
+    const only = cols.filter((c) => c.across_pulls === "only_" + b);
+    if (!only.length) continue;
+    const bySec = {};
+    only.forEach((c) => { const k = c.pulls[b].instrument || PSEUDO[c.pulls[b].status] || "Other"; bySec[k] = (bySec[k] || 0) + 1; });
+    out.push(el("h2", { class: "kicker" }, `Only in the ${dl(b)}: ${only.length.toLocaleString()} variables`));
+    const d = el("details", {}, el("summary", {}, "by survey section"));
+    const ul = el("ul", { class: "list" });
+    Object.entries(bySec).sort((x, y) => y[1] - x[1]).forEach(([k, n]) => ul.append(el("li", {}, el("button", { class: "row", onclick: () => go({ pull: b, tab: "instruments", inst: k }, { focus: "#mid" }) },
+      el("span", { class: "name" }, k), el("span", { class: "n" }, n.toLocaleString())))));
+    d.append(ul); out.push(d);
+  }
+  const ghosts = cols.filter((c) => !Object.keys(c.pulls).length);
+  out.push(el("h2", { class: "kicker" }, `Listed for cross-study sharing but in no data set: ${ghosts.length}`),
+    el("ul", { class: "list" }, ...ghosts.map((c) => rowBtn(c, null, (mapped[c.name] || []).map((m) => m[0]).join(", ")))));
+  if ((G.meta.untagged || []).length) out.push(el("h2", { class: "kicker" }, `Survey sections without a topic: ${G.meta.untagged.length}`), el("div", { class: "note" }, G.meta.untagged.join(", ")));
+  if ((G.meta.untitled || []).length) out.push(el("h2", { class: "kicker" }, `Survey sections without a readable title: ${G.meta.untitled.length}`), el("div", { class: "note" }, G.meta.untitled.join(", ")));
+  return out;
+}
+function renderAbout() {
+  const src = el("table", {}, el("tr", {}, el("th", {}, "what"), el("th", {}, "file"), el("th", {}, "fingerprint")));
+  const what = (k) => k.startsWith("dictionary@") ? `codebook, ${dl(k.slice(11))}` : k.startsWith("export@") ? `raw data (variable names only), ${dl(k.slice(7))}`
+    : k === "column_mappings" ? "list of variables shared across studies" : k === "ncs_topics" ? "topic tags (draft)" : k === "ncs_section_titles" ? "readable names of the survey sections, from REDCap's form labels (draft)" : k;
+  for (const [k, s] of Object.entries(G.meta.sources)) src.append(el("tr", {}, el("td", {}, what(k)), el("td", { class: "mono" }, s.file || ""), el("td", { class: "mono" }, (s.sha256 || s.header_sha256 || "").slice(0, 16))));
+  const legend = (map, text) => el("table", {}, ...Object.keys(map).map((k) => el("tr", {}, el("td", {}, chip(map, k)), el("td", {}, text[k]))));
+  return [
+    el("h2", { class: "kicker" }, "What this is"),
+    el("p", {}, "A guide to the variables in the National Cannabis Study (NCS) data: which survey section and question each variable comes from, whether it is in the cleaned data, and whether it is shared with other studies. It is built from the study's codebooks and the list of variables in each data set. It contains no participant answers."),
+    el("h2", { class: "kicker" }, "Ways to look"),
+    el("p", {}, "Network: start with all topics, open a topic, a survey section and a question to reach its variables. Map: the same groups as rectangles sized by how many variables they hold. Survey sections: the questionnaire in its own order. Variables: one flat list with filters. In every view the panel on the right can copy the variable names, copy a table with question text for Excel or Sheets, or copy a link to the view you are looking at. Esc or the breadcrumb goes up one level; the browser's Back button works too."),
+    el("h2", { class: "kicker" }, "Where a variable comes from"),
+    legend(STATUS, { is_field: "one survey question", checkbox_option: "each option of a check-all-that-apply question is its own yes/no variable",
+      form_status: "when a survey section was completed, or whether it was finished", redcap_system: "added by the survey software (for example, which wave a row belongs to)",
+      unresolved: "the codebook that came with this data set does not describe it", pipeline: "created while cleaning the data: ids, scores, matched conditions and medications" }),
+    el("h2", { class: "kicker" }, "Is it in the cleaned data?"), legend(FATE, FATE_WHY),
+    el("p", { class: "note" }, "Topics are a first draft written from the section names and questions; the study team still needs to review them. A section can belong to more than one topic. Everything else comes straight from the files below."),
+    el("h2", { class: "kicker" }, "Files used"), src,
+  ];
+}
+
+// ---- detail ----------------------------------------------------------------------------------------------------------------
+function kv(pairs) { const d = el("dl"); for (const [k, v] of pairs) if (v) d.append(el("dt", {}, k), el("dd", {}, v)); return d; }
+function sourceNote(keys) { return el("details", { class: "note" }, el("summary", {}, "source files"), ...keys.map((k) => el("div", { class: "mono" }, (G.meta.sources[k] || {}).file || k))); }
+function fieldDetail(name) {
+  const f = fields[S.pull][name];
+  if (!f) return [el("div", { class: "empty" }, `${name} is not in the codebook for the ${dl(S.pull)}.`)];
+  const cols = colsByField[S.pull][name] || [];
+  const out = [el("div", { class: "muted" }, "survey question"), el("h2", { class: "item" }, f.name),
+    el("div", {}, "survey section ", el("button", { class: "link", onclick: () => go({ tab: "instruments", inst: f.form }, { focus: "#mid" }) }, titleOf(f.form)), titleOf(f.form) !== f.form ? el("span", { class: "muted mono" }, " " + f.form) : "",
+      f.identifier === "y" ? el("span", { class: "chip bad" }, "identifying information") : ""),
+    el("div", { class: "label" }, f.label || "(no text)")];
+  if (f.label_source) out.push(el("details", {}, el("summary", {}, "question text exactly as stored in the codebook"), el("pre", {}, f.label_source)));
+  out.push(kv([["heading", f.section], ["note", f.note], ["answer format", f.validation in FORMAT ? FORMAT[f.validation] : f.validation]]));
+  if (f.choices && f.choices.length) {
+    out.push(el("h3", { class: "kicker" }, `${f.choices.length} answer options${f.type === "checkbox" ? " (check all that apply)" : ""}`));
+    const cb = f.type === "checkbox";
+    const t = el("table", {}, el("tr", {}, el("th", {}, "code"), el("th", {}, "answer"), cb ? el("th", {}, "variable") : null, cb ? el("th", {}, "in the cleaned data?") : null));
+    for (const [code, label] of f.choices) {
+      const col = cb ? cols.find((c) => (c.pulls[S.pull].option || [])[0] === code) : null;
+      t.append(el("tr", {}, el("td", { class: "mono" }, code), el("td", {}, label),
+        cb ? el("td", { class: "mono" }, col ? el("button", { class: "link", onclick: () => go({ sel: { type: "column", name: col.name } }, { focus: "#detail" }) }, col.name) : el("span", { class: "chip bad" }, "no variable")) : null,
+        cb ? el("td", {}, col ? fateChip(col.pulls[S.pull].fate) : "") : null));
+    }
+    out.push(t);
+  }
+  for (const [k, t] of [["branching", "asked only when"], ["calculation", "calculated as"], ["annotation", "survey software notes"]])
+    if (f[k]) out.push(el("h3", { class: "kicker" }, t), el("pre", {}, humanize(f[k])));
+  if (f.type !== "checkbox" && cols.length) { out.push(el("h3", { class: "kicker" }, plural(cols.length, "variable"))); const ul = el("ul", { class: "list" }); cols.forEach((c) => ul.append(el("li", {}, varRow(c)))); out.push(ul); }
+  const shares = cols.flatMap((c) => (mapped[c.name] || []).map((m) => [c.name, m[0]]));
+  if (shares.length) out.push(el("h3", { class: "kicker" }, "shared across studies as"), el("table", {}, ...shares.map(([c, can]) => el("tr", {}, el("td", { class: "mono" }, c), el("td", {}, can)))));
+  const elsewhere = PULLS.filter((b) => b !== S.pull && fields[b][name]);
+  if (elsewhere.length) {
+    out.push(el("h3", { class: "kicker" }, "in the other data set"));
+    const ul = el("ul", { class: "list" });
+    for (const b of elsewhere) {
+      const o = fields[b][name], diffs = [];
+      if (o.form !== f.form) diffs.push(`in survey section ${titleOf(o.form)}`);
+      if (o.type !== f.type) diffs.push("asked differently");
+      if ((o.label_source || o.label) !== (f.label_source || f.label)) diffs.push("worded differently");
+      if (JSON.stringify(o.choices) !== JSON.stringify(f.choices)) diffs.push("different answer options");
+      ul.append(el("li", {}, el("button", { class: "row", onclick: () => go({ pull: b }, { focus: "#detail" }) }, el("span", { class: "name" }, b), el("span", { class: "lbl" }, diffs.length ? diffs.join(" · ") : "same wording and answer options"))));
+    }
+    out.push(ul);
+  }
+  out.push(sourceNote(["dictionary@" + S.pull]));
+  return out;
+}
+function columnDetail(name) {
+  const c = N["column:" + name];
+  if (!c) return [el("div", { class: "empty" }, `No variable called ${name}.`)];
+  const out = [el("div", { class: "muted" }, c.added_by_pipeline ? "variable added during cleaning" : "variable"), el("h2", { class: "item" }, c.name)];
+  const r0 = c.pulls[S.pull];
+  if (r0) out.push(el("div", {}, fateChip(r0.fate), " ", el("span", { class: "note" }, FATE_WHY[r0.fate])));
+  if (r0 && r0.field && fields[S.pull][r0.field]) out.push(el("div", { class: "label" }, (r0.option ? r0.option[1] + " — one option of: " : "") + fields[S.pull][r0.field].label));
+  const fates = PULLS.map((b) => c.pulls[b] && c.pulls[b].fate).filter(Boolean);
+  if (new Set(fates).size > 1) out.push(el("div", { class: "banner" }, "Its status differs between the data sets: " + PULLS.filter((b) => c.pulls[b]).map((b) => `${FATE[c.pulls[b].fate][0]} as of ${b}`).join("; ") + "."));
+  if (across(c)) out.push(el("div", { class: "note" }, across(c)));
+  for (const b of PULLS) {
+    const r = c.pulls[b];
+    out.push(el("h3", { class: "kicker" }, dl(b)));
+    if (!r) { out.push(el("div", { class: "note" }, "not in this data set")); continue; }
+    out.push(kv([["in the cleaned data?", fateChip(r.fate)], ["comes from", el("span", {}, chip(STATUS, r.status), r.option ? ` — option: ${r.option[1]}` : "")],
+      ["question", r.field ? el("button", { class: "link mono", onclick: () => go({ pull: b, sel: { type: "field", name: r.field } }, { focus: "#detail" }) }, r.field) : ""],
+      ["survey section", r.instrument ? el("button", { class: "link", onclick: () => go({ pull: b, tab: "instruments", inst: r.instrument }, { focus: "#mid" }) }, titleOf(r.instrument)) : ""],
+      ["why unresolved", r.reason || ""]]));
+  }
+  if (mapped[name]) out.push(el("h3", { class: "kicker" }, "shared across studies as"), el("div", {}, mapped[name].map((m) => m[0]).join(", ")));
+  out.push(sourceNote(["export@" + S.pull].concat(mapped[name] ? ["column_mappings"] : [])));
+  return out;
+}
+
+// ---- render ----------------------------------------------------------------------------------------------------------------
+function render() {
+  renderHeader();
+  if ($("q").value !== S.q) $("q").value = S.q;
+  const graph = S.tab === "network" || S.tab === "map";
+  const back = el("div", {}, el("button", { class: "link", onclick: () => go({ sel: null }, { focus: ".pill.top, #map" }) }, "← back to the group"));
+  let count = null;
+  if (graph) {
+    $("main").className = "graphmode";
+    settlePath();
+    const { root, node, missing } = S.tab === "network" ? renderNetwork() : renderMap();
+    count = root.n;
+    $("detail").replaceChildren(...(!S.sel ? groupPanel(root, node, missing) : [back, ...(S.sel.type === "field" ? fieldDetail(S.sel.name) : columnDetail(S.sel.name))]));
+  } else {
+    $("mid").className = "";
+    const listTab = S.tab === "instruments" || S.tab === "columns";
+    $("main").className = S.tab === "instruments" ? "" : (S.sel ? "wide" : "single");
+    if (S.tab === "instruments") renderLeft();
+    const mid = S.tab === "instruments" ? renderInstrument() : S.tab === "columns" ? renderColumns() : S.tab === "review" ? renderReview() : renderAbout();
+    if (S.q && !listTab) mid.unshift(el("div", { class: "banner" }, `The search box applies to the Network, Map, Survey sections and Variables views.`));
+    $("mid").replaceChildren(...mid);
+    $("detail").replaceChildren(...(!S.sel ? [el("div", { class: "empty" }, "Pick a question or variable to see where it comes from and whether it is in the cleaned data.")]
+      : S.sel.type === "field" ? fieldDetail(S.sel.name) : columnDetail(S.sel.name)));
+    if (S.tab === "columns") count = colsOf[S.pull].filter((c) => matches(c._hay[S.pull], words(S.q))).length;
+  }
+  $("qnote").textContent = S.q && count !== null ? `${plural(count, "variable")} match` : "";
+  $("status").textContent = S.q ? (count === null ? "" : `${plural(count, "variable")} match “${S.q}”`) : "";
+  document.title = (S.sel ? S.sel.name + " · " : "") + "NCS Catalog Explorer";
+  if (focusNext) {
+    const t = document.querySelector(focusNext);
+    if (t) { if (t.tabIndex < 0 && !t.hasAttribute("tabindex")) t.tabIndex = -1; t.focus({ preventScroll: false }); }
+    focusNext = null;
+  }
+}
+let timer = null, resizeTimer = null;
+$("q").addEventListener("input", (e) => { const v = e.target.value; clearTimeout(timer); timer = setTimeout(() => go({ q: v.trim(), all: false }, { replace: true }), 180); });
+const onNavigate = () => { if (location.hash === written) return; stale = null; readHash(); writeHash(true); render(); };
+window.addEventListener("hashchange", onNavigate);
+window.addEventListener("popstate", onNavigate);
+window.addEventListener("resize", () => { if (S.tab !== "map" && S.tab !== "network") return; clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || (S.tab !== "map" && S.tab !== "network") || e.target === $("q")) return;
+  if (S.sel) go({ sel: null }, { focus: ".pill.top, #map" });
+  else if (S.path.length) { const { node } = resolve(getTree()); const p = up(node); if (p) go({ path: pathOf(p), all: false }, { focus: ".pill.top, #map" }); }
+});
+const typedEarly = $("q").value.trim();
+readHash();
+if (typedEarly && !S.q) S.q = typedEarly;
+if (!S.inst && insts[S.pull].length) S.inst = insts[S.pull][0].name;
+$("q").disabled = false;
+writeHash(true);                          // normalises a partial address; leaves the bare address bare
+render();
+}
+</script>
+</body>
+</html>
